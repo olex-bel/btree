@@ -3,18 +3,17 @@ package btree
 type BTree struct {
 	Root   *BTreeNode
 	Degree uint8
-	file   *BTreeFile
+	File   IOBTreeFile
 }
 
 func (t *BTree) allocateNode() int64 {
-	nodePosition := t.file.Descriptor.FirstFreeBlock
-	t.file.Descriptor.FirstFreeBlock += int64(getNodeSize(t.Degree))
+	nodePosition := t.File.AllocateBlock()
 	return nodePosition
 }
 
 func (t *BTree) Close() {
-	t.file.UpdateDescriptor()
-	t.file.file.Close()
+	t.File.UpdateDescriptor()
+	t.File.Close()
 }
 
 func (t *BTree) CreateNode() *BTreeNode {
@@ -43,7 +42,7 @@ func CreateTree(io IOBTree, fullFileName string, degree uint8) *BTree {
 
 	file, _ := io.CreateFile(fullFileName, &tree, int(degree)*2*4)
 
-	tree.file = file
+	tree.File = file
 	tree.Root = tree.CreateNodeAndAllocate()
 	tree.Root.Leaf = true
 	file.WriteNode(tree.Root)
@@ -55,12 +54,12 @@ func OpenTree(io IOBTree, fullFileName string) *BTree {
 	file, _ := io.OpenFile(fullFileName)
 
 	tree := BTree{
-		Degree: uint8(file.Descriptor.TreeDegree),
-		file:   file,
+		Degree: uint8(file.GetTreeDegree()),
+		File:   file,
 	}
 
 	root := tree.CreateNode()
-	root.Position = file.Descriptor.RootNodePosition
+	root.Position = file.GetRootBlock()
 	file.ReadNode(root)
 	tree.Root = root
 
@@ -73,7 +72,7 @@ func (t *BTree) Insert(key int32, value int32) {
 		root.Childs[0] = t.Root.Position
 		child := t.Root
 		t.Root = root
-		t.file.Descriptor.RootNodePosition = root.Position
+		t.File.UpdateRootPosition(root.Position)
 		t.splitChild(root, child, 0)
 	}
 
@@ -101,7 +100,7 @@ func (t *BTree) findNode(node *BTreeNode, key int32) (*BTreeNode, int) {
 
 	child := t.CreateNode()
 	child.Position = node.Childs[index]
-	t.file.ReadNode(child)
+	t.File.ReadNode(child)
 
 	return t.findNode(child, key)
 }
@@ -114,7 +113,7 @@ func (t *BTree) insertNonFull(node *BTreeNode, key int32, value int32) {
 			index += 1
 		}
 		node.Insert(index, key, value)
-		t.file.WriteNode(node)
+		t.File.WriteNode(node)
 	} else {
 		for index < int(node.Size) && key > node.Keys[index] {
 			index += 1
@@ -122,7 +121,7 @@ func (t *BTree) insertNonFull(node *BTreeNode, key int32, value int32) {
 
 		child := t.CreateNode()
 		child.Position = node.Childs[index]
-		t.file.ReadNode(child)
+		t.File.ReadNode(child)
 
 		if child.Size == 2*t.Degree-1 {
 			t.splitChild(node, child, index)
@@ -131,7 +130,7 @@ func (t *BTree) insertNonFull(node *BTreeNode, key int32, value int32) {
 				index += 1
 				child = t.CreateNode()
 				child.Position = node.Childs[index]
-				t.file.ReadNode(child)
+				t.File.ReadNode(child)
 			}
 		}
 
@@ -157,7 +156,7 @@ func (t *BTree) splitChild(parentNode, childNode *BTreeNode, index int) {
 	copy(childNode.Values, childNode.Values[0:t.Degree-1])
 	childNode.Size = t.Degree - 1
 
-	t.file.WriteNode(parentNode)
-	t.file.WriteNode(node)
-	t.file.WriteNode(childNode)
+	t.File.WriteNode(parentNode)
+	t.File.WriteNode(node)
+	t.File.WriteNode(childNode)
 }

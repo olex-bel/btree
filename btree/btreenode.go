@@ -9,7 +9,7 @@ type BTreeNode struct {
 	Childs   []int64
 }
 
-func getNodeSize(degree uint8) int {
+func GetNodeSize(degree uint8) int {
 	maxNumberOfKeys := int(degree*2 - 1)
 	maxNumberOfChilds := int(degree * 2)
 

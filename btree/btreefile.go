@@ -19,8 +19,20 @@ type BTreeFileDescriptor struct {
 }
 
 type IOBTree interface {
-	CreateFile(fullFileName string, tree *BTree, pageSize int) (*BTreeFile, error)
-	OpenFile(fullFileName string) (*BTreeFile, error)
+	CreateFile(fullFileName string, tree *BTree, pageSize int) (IOBTreeFile, error)
+	OpenFile(fullFileName string) (IOBTreeFile, error)
+}
+
+type IOBTreeFile interface {
+	UpdateDescriptor() error
+	WriteNode(node *BTreeNode) error
+	ReadNode(node *BTreeNode) error
+	PrintNode(node *BTreeNode)
+	AllocateBlock() int64
+	GetRootBlock() int64
+	GetTreeDegree() int16
+	UpdateRootPosition(position int64)
+	Close()
 }
 
 type BTreeFile struct {
@@ -45,6 +57,28 @@ func (f *BTreeFile) readNextBytes(number int) ([]byte, error) {
 	}
 
 	return bytes, nil
+}
+
+func (f *BTreeFile) Close() {
+	f.file.Close()
+}
+
+func (f *BTreeFile) AllocateBlock() int64 {
+	position := f.Descriptor.FirstFreeBlock
+	f.Descriptor.FirstFreeBlock += int64(GetNodeSize(uint8(f.Descriptor.TreeDegree)))
+	return position
+}
+
+func (f *BTreeFile) UpdateRootPosition(position int64) {
+	f.Descriptor.RootNodePosition = position
+}
+
+func (f *BTreeFile) GetTreeDegree() int16 {
+	return f.Descriptor.TreeDegree
+}
+
+func (f *BTreeFile) GetRootBlock() int64 {
+	return f.Descriptor.RootNodePosition
 }
 
 func (f *BTreeFile) UpdateDescriptor() error {
@@ -92,7 +126,7 @@ func (f *BTreeFile) PrintNode(node *BTreeNode) {
 	fmt.Println("-----------------------")
 }
 
-func (m *BTreeFileMgr) OpenFile(fullFileName string) (*BTreeFile, error) {
+func (m *BTreeFileMgr) OpenFile(fullFileName string) (IOBTreeFile, error) {
 	var file, err = os.OpenFile(fullFileName, os.O_RDWR, 0644)
 
 	if err != nil {
@@ -132,7 +166,7 @@ func (m *BTreeFileMgr) OpenFile(fullFileName string) (*BTreeFile, error) {
 	return &btreeFile, nil
 }
 
-func (m *BTreeFileMgr) CreateFile(fullFileName string, tree *BTree, pageSize int) (*BTreeFile, error) {
+func (m *BTreeFileMgr) CreateFile(fullFileName string, tree *BTree, pageSize int) (IOBTreeFile, error) {
 	file, err := os.Create(fullFileName)
 
 	if err != nil {
